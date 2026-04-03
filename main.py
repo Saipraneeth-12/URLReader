@@ -23,10 +23,8 @@ st.sidebar.title("🔗 News Article URLs")
 
 VECTORSTORE_FILE = "faiss_store_open.pkl"
 EMBED_MODEL_PATH = "./models/all-MiniLM-L6-v2"
-# Use local model if available, otherwise download from HuggingFace once and cache
 _LOCAL_LLM_PATH = "./models/flan-t5-base"
-LLM_MODEL_NAME = _LOCAL_LLM_PATH if os.path.isdir(_LOCAL_LLM_PATH) else "google/flan-t5-base"e"  # after downloading manually
-
+LLM_MODEL_NAME = _LOCAL_LLM_PATH if os.path.isdir(_LOCAL_LLM_PATH) else "google/flan-t5-base"
 CHUNK_SIZE = 400
 DEFAULT_TOP_K = 3
 
@@ -72,9 +70,10 @@ def load_embedding_model() -> HuggingFaceEmbeddings:
         model_kwargs={"device": "cpu"},
         encode_kwargs={"batch_size": 32},
     )
+
+
 @st.cache_resource(show_spinner=False)
 def load_llm_pipeline():
-    """Load flan-t5-base — downloads once, cached by HuggingFace after that."""
     tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL_NAME)
     model = AutoModelForSeq2SeqLM.from_pretrained(LLM_MODEL_NAME)
     return pipeline(
@@ -82,12 +81,10 @@ def load_llm_pipeline():
         model=model,
         tokenizer=tokenizer,
         device=-1,
-        max_new_tokens=512,      # bigger output
-        num_beams=1,             # greedy decode — much faster on CPU than beam search
+        max_new_tokens=512,
+        num_beams=1,
         do_sample=False,
         truncation=True,
-        clean_up_tokenization_spaces=True,
-    )   truncation=True,
         clean_up_tokenization_spaces=True,
     )
 
@@ -131,8 +128,7 @@ def process_urls(urls: list[str]) -> FAISS | None:
     return vectorstore
 
 
-def extract_relevant_context(query: str, docs: list[Document], top_n: int = 6) -> str:
-    """Rank sentences by cosine similarity to the query and return the top ones."""
+def extract_relevant_context(query: str, docs: list[Document], top_n: int = 10) -> str:
     embedder = load_embedding_model()
     sentences = []
     for doc in docs:
@@ -150,23 +146,21 @@ def extract_relevant_context(query: str, docs: list[Document], top_n: int = 6) -
     sent_norms = sent_vecs / (np.linalg.norm(sent_vecs, axis=1, keepdims=True) + 1e-9)
     scores = sent_norms @ query_norm
 
+    top_idx = sorted(np.argsort(scores)[::-1][:top_n])
+    return ". ".join(sentences[i] for i in top_idx) + "."
+
+
 def synthesize_answer(query: str, context: str) -> str:
-    """Use flan-t5-base to rephrase the context into a structured answer."""
     llm = load_llm_pipeline()
     prompt = (
         f"You are a helpful assistant. Read the context carefully and write a detailed, "
         f"well-structured paragraph answering the question in your own words. "
         f"Cover all key points from the context.\n\n"
-        f"Context: {context[:1800]}\n\n"  # cap at ~1800 chars to stay within T5 input limit
+        f"Context: {context[:1800]}\n\n"
         f"Question: {query}\n\n"
         f"Answer:"
     )
-    result = llm(prompt)[0]["generated_text"].strip()
-    return resultn: {query}\n\n"
-        f"Answer:"
-    )
-    result = llm(prompt)[0]["generated_text"].strip()
-    return result
+    return llm(prompt)[0]["generated_text"].strip()
 
 
 def answer_query(query: str, top_k: int = DEFAULT_TOP_K) -> None:
@@ -185,11 +179,11 @@ def answer_query(query: str, top_k: int = DEFAULT_TOP_K) -> None:
     )
     source_docs = retriever.invoke(query)
 
-    context = extract_relevant_context(query, source_docs, top_n=10)
+    if not source_docs:
         st.warning("No relevant chunks found for your question.")
         return
 
-    context = extract_relevant_context(query, source_docs, top_n=6)
+    context = extract_relevant_context(query, source_docs, top_n=10)
     if not context.strip():
         st.warning("Could not extract relevant context. Try rephrasing.")
         return
