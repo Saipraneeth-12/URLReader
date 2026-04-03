@@ -1,5 +1,7 @@
 # RockyBot — Offline News Research (URL Reader)
 
+🚀 **Live App:** [https://rockybot-news.streamlit.app](https://rockybot-news.streamlit.app)
+
 A small Streamlit application for scraping web articles from URLs, embedding text with a local Hugging Face model, storing in FAISS, and answering user queries via LangChain retrieval QA.
 
 ---
